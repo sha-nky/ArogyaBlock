@@ -93,43 +93,71 @@
       $("#includedContent").load("anim.html"); 
     });
 
-    connect();    
-    function login(){
+    connect().catch(function(error){ console.error(error); $(".alert-warning").show(); });
+
+    function getPatientListAsync() {
+      return new Promise(function(resolve, reject) {
+        contractInstance.get_patient_list(function(error, result) {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve(result || []);
+        });
+      });
+    }
+
+    function getDoctorListAsync() {
+      return new Promise(function(resolve, reject) {
+        contractInstance.get_doctor_list(function(error, result) {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve(result || []);
+        });
+      });
+    }
+
+    async function login(){
         $(".alert-warning").hide();
 
-        publicKey = web3.currentProvider.selectedAddress;
-        console.log(publicKey);
-        contractInstance.get_patient_list(function(error, result){
-            if(!error){
-                var PatientList = result;
-                for(var i = 0; i < PatientList.length; i++) {
-                    if (publicKey.toLowerCase() == PatientList[i]) {
-                        location.href = "./patient.html?key=" + publicKey;
-                    }
-                }
-            } else {
-                console.log(error);
-                $(".alert-warning").show();
-            }
-        });
+        try {
+            await connect();
+        } catch (error) {
+            console.error(error);
+            $(".alert-warning").show();
+            return;
+        }
 
-        contractInstance.get_doctor_list(function(error, result){
-            if(!error){
-                var DoctorList = result;
-                for(var i = 0; i < DoctorList.length; i++) {
-                    if (publicKey.toLowerCase() == DoctorList[i]) {
-                        location.href = "./doctor.html?key=" + publicKey;
-                    }
-                }
-            } else {
-                console.log(error);
-                $(".alert-warning").show();
+        var publicKey = (window.ethereum && window.ethereum.selectedAddress) || (web3.eth.accounts && web3.eth.accounts[0]);
+        if (!publicKey) {
+            $(".alert-warning").show();
+            return;
+        }
+
+        var normalizedKey = publicKey.toLowerCase();
+
+        try {
+            var patientList = await getPatientListAsync();
+            if (patientList.indexOf(normalizedKey) !== -1) {
+                location.href = "./patient.html?key=" + publicKey;
+                return;
             }
-        }); 
-        
-        console.log("Invalid User!");
-        $(".alert-warning").show();
-    }
+            var doctorList = await getDoctorListAsync();
+            if (doctorList.indexOf(normalizedKey) !== -1) {
+                location.href = "./doctor.html?key=" + publicKey;
+                return;
+            }
+        } catch (error) {
+            console.error(error);
+            $(".alert-warning").show();
+            return;
+        }
+
+          console.log("Invalid User!");
+          $(".alert-warning").show();
+        }
   </script>
 
 </body>
