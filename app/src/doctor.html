@@ -158,11 +158,17 @@
     
     toggleRecordsButton = 0;
 
-    $(window).load(function() {
-        connect();
+    $(window).load(async function() {
+        try {
+            await connect();
+        } catch (error) {
+            console.error(error);
+            $(".alert-danger").show();
+            return;
+        }
         $(".alert-danger").hide();
         
-        key = web3.currentProvider.selectedAddress;
+        key = (window.ethereum && window.ethereum.selectedAddress) || (web3.eth.accounts && web3.eth.accounts[0]);
         key = key.toLocaleLowerCase();
 
         var a = 0;
@@ -435,7 +441,8 @@ Comments : ${comments}
 
         
         try{
-            const response = await fetch('http://127.0.0.1:5000/predict', {
+            const predictionApiUrl = getPredictionApiUrl();
+            const response = await fetch(predictionApiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -445,6 +452,10 @@ Comments : ${comments}
                 manual_disease: diagnosed
             })
         });
+        if (!response.ok) {
+            throw new Error('Prediction API request failed with status ' + response.status);
+        }
+
         var oldRecords = $("#records"+patientAddress).html();
         const data = await response.json();
         const aiPredictedDisease = data.predicted_disease;
@@ -493,6 +504,7 @@ Doctors Diagnosis Accuracy: ${manualAccuracy}%
         }
     } catch (error) {
         console.error('Error communicating with the Flask API:', error);
+        alert('Could not reach prediction API. Start backend on 127.0.0.1:5000 or set ?mlApiBase=http://host:port');
     }
     }
 </script>

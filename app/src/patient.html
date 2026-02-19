@@ -151,7 +151,7 @@
                         </div>
                     </div>
                     <br>
-                    <div class="form-group" style="align-item:centre; margin-left:80px; margin-top: -160px;">
+                    <div class="form-group" style="align-items:centre; margin-left:80px; margin-top: -160px;">
                         <button class="cta-btn btn-block" onclick="submitSymptoms(this)">Submit</button>
                     </div>
                 </div>
@@ -295,76 +295,44 @@ populateDropdowns();
     toggleRecordsButton = 0;
     var recordHash = "";
 
-    $(window).load(function() {
-        connect();
+    $(window).load(async function() {
+        try {
+            await connect();
+        } catch (error) {
+            console.error(error);
+            $(".alert-danger").show();
+            return;
+        }
         $("#records").hide();
         $(".alert-info").hide();
         $(".alert-danger").hide();
-        key = web3.currentProvider.selectedAddress;
+        key = (window.ethereum && window.ethereum.selectedAddress) || (web3.eth.accounts && web3.eth.accounts[0]);
         key = key.toLocaleLowerCase();
 
         var a = "";
         var b = 0;
         var c= "";
         var ailments = [];
-        var insurerName = "";
 
+        // Insurance UI is intentionally hidden until insurer flow is implemented in contract + UI.
         $("#buyInsurance").hide();
         $("#insuranceInfo").hide();
         
-        // print patient details and insurer details (if exists). If insurer does not exist show the buy insurance panel
+        // print patient details
         console.log("Getting Patient Data");
         contractInstance.get_patient.call(key, {gas: 1000000}, function(error, result){
             console.log("Patient Data Result:"+result);
             if(!error){
                 console.log(result);
-                a = result[0]; 
+                a = result[0];
                 b = result[1];
                 c = result[2];
                 ailments = result[2];
-                insurerAddress = result[3];
                 recordHash = result[4];
                 $("#name").html(a);
                 $("#age").html(b.c[0]);
                 $("#recordsHash").html(recordHash);
                 pname=a;
-
-                if (insurerAddress != 0){
-                    $("#buyInsurance").hide();
-
-
-                } else {
-                    var InsurerList = 0;
-                    
-                    contractInstance.get_insurer_list({gas: 1000000}, function(error, result){
-
-                        if(!error){
-                            
-                            InsurerList = result;
-                            var list = document.getElementById("insurers");
-                            for (var i = 0; i < InsurerList.length; i++) {
-                                
-                                contractInstance.get_insurer.call(InsurerList[i], {gas: 1000000}, function(error, result){
-                                    
-                                    
-                                    if(!error){
-                                        d = result[0];
-
-                                        var option = document.createElement("option");
-                                        option.text = d;
-
-                                        list.add(option);
-                                    } else{
-                                        console.log(error);
-                                    }
-                                })
-                            }
-                        }
-                    })
-                    $("#buyInsurance").show();
-
-                    $("#insuranceInfo").hide();
-                }
             }
             else
                 console.error(error);
