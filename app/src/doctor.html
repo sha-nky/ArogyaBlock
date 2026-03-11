@@ -322,6 +322,10 @@
                                             
                                         </div>
                                         <br>
+                                        <div class="alert alert-success" id="patientFriendlySummary`+patientAddress+`" style="display:none; margin-bottom: 15px;">
+                                            <strong>AI summary for patient:</strong>
+                                            <p id="patientFriendlySummaryText`+patientAddress+`" style="margin-top:10px; white-space: pre-line;"></p>
+                                        </div>
                                         <div class="form-group" style="align-item:centre; margin-left:80px">
                                                 <button class="cta-btn btn-block" onclick = "submitDiagnosis2(this,`+index+`)">Submit</button>
                                             </div>
@@ -383,7 +387,7 @@
         var diagnosis = $("#ailmentsList"+patientAddress).val();
         diagnosis = parseInt(diagnosis);
         var diagnosed = ailmentsDict[diagnosis];
-        var comments = document.getElementById("details").value;
+        var comments = document.querySelector("#details").value;
 
         var oldRecords = $("#records"+patientAddress).html();
 
@@ -428,6 +432,29 @@ Comments : ${comments}
         }
     }
 
+    async function getSimplifiedDiagnosisForPatient(payload) {
+        try {
+            const response = await fetch(getSimplifiedDiagnosisApiUrl(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.text();
+                throw new Error('AI simplification failed with status ' + response.status + ': ' + errorBody);
+            }
+
+            const data = await response.json();
+            return data.simplified_diagnosis || '';
+        } catch (error) {
+            console.error('Error simplifying diagnosis:', error);
+            return '';
+        }
+    }
+
     async function submitDiagnosis2(element,index)
     {
         var table = document.getElementById("viewPatient");
@@ -437,37 +464,28 @@ Comments : ${comments}
         var diagnosis = $("#ailmentsList"+patientAddress).val();
         diagnosis = parseInt(diagnosis);
         var diagnosed = ailmentsDict[diagnosis];
-        var comments = document.getElementById("details").value;
+        var comments = document.querySelector("#details").value;
 
         
         try{
-            const predictionApiUrl = getPredictionApiUrl();
-            const response = await fetch(predictionApiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                symptoms: global_sym,
-                manual_disease: diagnosed
-            })
-        });
-        if (!response.ok) {
-            throw new Error('Prediction API request failed with status ' + response.status);
-        }
+            var oldRecords = $("#records"+patientAddress).html();
+            const simplifiedDiagnosis = await getSimplifiedDiagnosisForPatient({
+                diagnosis: diagnosed,
+                comments: comments,
+                symptoms: global_sym
+            });
 
-        var oldRecords = $("#records"+patientAddress).html();
-        const data = await response.json();
-        const aiPredictedDisease = data.predicted_disease;
-        const aiProbability = (data.predicted_probability * 100).toFixed(2);
-        const manualAccuracy = data.manual_accuracy ? (data.manual_accuracy * 100).toFixed(2) : '0';
-        var newRecords = 
+            if (simplifiedDiagnosis) {
+                $("#patientFriendlySummaryText" + patientAddress).text(simplifiedDiagnosis);
+                $("#patientFriendlySummary" + patientAddress).show();
+            }
+
+            var newRecords = 
 `Diagnosed By : ${docName}
 Diagnosis Time : ${getDateTime()}
 Diagnosis : ${diagnosed}
 Comments : ${comments}
-AI Model Prediction: ${aiPredictedDisease} (${aiProbability}% confidence)
-Doctors Diagnosis Accuracy: ${manualAccuracy}%
+Simplified Summary For Patient: ${simplifiedDiagnosis || "Unavailable"}
 -------------------------------------------------
 `
 
@@ -503,8 +521,8 @@ Doctors Diagnosis Accuracy: ${manualAccuracy}%
             alert("Select a diagnosis");
         }
     } catch (error) {
-        console.error('Error communicating with the Flask API:', error);
-        alert('Could not reach prediction API. Start backend on 127.0.0.1:5000 or set ?mlApiBase=http://host:port');
+        console.error('Error communicating with the AI gateway:', error);
+        alert('Could not reach AI gateway. Start backend on 127.0.0.1:5000 or set ?aiApiBase=http://host:port');
     }
     }
 </script>

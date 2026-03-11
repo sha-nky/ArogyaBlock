@@ -154,6 +154,10 @@
                     <div class="form-group" style="align-items:centre; margin-left:80px; margin-top: -160px;">
                         <button class="cta-btn btn-block" onclick="submitSymptoms(this)">Submit</button>
                     </div>
+                    <div class="alert alert-info" id="patientAiPreliminaryPanel" style="display:none; margin-top: 20px;">
+                        <strong>AI preliminary diagnosis:</strong>
+                        <p id="patientAiPreliminaryText" style="margin-top:10px; white-space: pre-line;"></p>
+                    </div>
                 </div>
             </pre>
             
@@ -484,8 +488,34 @@ populateDropdowns();
         });
     }
 
+    async function getPatientPreliminaryDiagnosis(symptoms, intensityLabel) {
+        try {
+            const response = await fetch(getPreliminaryDiagnosisApiUrl(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    symptoms: symptoms,
+                    intensity: intensityLabel
+                })
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.text();
+                throw new Error('AI preliminary diagnosis failed with status ' + response.status + ': ' + errorBody);
+            }
+
+            const data = await response.json();
+            return data.preliminary_diagnosis || '';
+        } catch (error) {
+            console.error('Error generating preliminary diagnosis:', error);
+            return '';
+        }
+    }
+
     // New 
-    function submitSymptoms(element,index)
+    async function submitSymptoms(element,index)
     {
         // var table = document.getElementById("viewPatient");
         // var patientAddress = table.rows[index].cells[1].innerHTML;
@@ -510,12 +540,25 @@ populateDropdowns();
 
 
         console.log( "oldrecords ",resultt);
+        var aiPreliminary = '';
+        if (!isNaN(diagnosis)) {
+            aiPreliminary = await getPatientPreliminaryDiagnosis(symp, diagnosed);
+        }
+
+        if (aiPreliminary) {
+            $("#patientAiPreliminaryText").text(aiPreliminary);
+            $("#patientAiPreliminaryPanel").show();
+        } else {
+            $("#patientAiPreliminaryPanel").hide();
+        }
+
         var newRecords = 
 `
 Symptoms updated By : ${pname}
 Symptomes updation Time : ${getDateTime()}
 Intensity: ${diagnosed}
 Symptomes : ${symp}
+AI Preliminary Diagnosis : ${aiPreliminary || "Unavailable"}
 -------------------------------------------------
 `
         console.log("newRecords", newRecords);

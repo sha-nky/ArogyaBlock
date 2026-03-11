@@ -108,17 +108,22 @@ window.addEventListener('load', async function () {
   }
 });
 
-function getPredictionApiUrl() {
+function getAiGatewayBase() {
   var url = new URL(window.location.href);
-  var apiBase = url.searchParams.get("mlApiBase") || window.localStorage.getItem("mlApiBase") || window.ML_API_BASE || "";
+  var configured = url.searchParams.get("aiApiBase") || window.localStorage.getItem("aiApiBase") || window.AI_API_BASE || "";
 
-  if (apiBase) {
-    if (apiBase.endsWith("/")) {
-      apiBase = apiBase.slice(0, -1);
-    }
-    return apiBase + "/predict";
+  if (!configured) {
+    configured = "http://127.0.0.1:5000";
   }
 
   // Default to same-origin path to avoid browser CORS issues when proxied by dev server.
-  return "/predict";
+  return configured.endsWith("/") ? configured.slice(0, -1) : configured;
+}
+
+function getPreliminaryDiagnosisApiUrl() {
+  return getAiGatewayBase() + "/ai/preliminary-diagnosis";
+}
+
+function getSimplifiedDiagnosisApiUrl() {
+  return getAiGatewayBase() + "/ai/simplify-diagnosis";
 }
