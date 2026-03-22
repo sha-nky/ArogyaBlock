@@ -75,9 +75,17 @@
             <div class="alert alert-info" id="info-alert" style="display: none;">
               <strong>Info!</strong> User already registered. Please check your details.
             </div>
+
+            <div class="alert alert-danger" id="error-alert" style="display: none;">
+              <strong>Registration failed.</strong> <span id="error-message">Please check your wallet connection and try again.</span>
+            </div>
+
+            <div class="alert alert-secondary" id="status-alert" style="display: none;">
+              <strong>Status:</strong> <span id="status-message"></span>
+            </div>
             <!-- End Alert Messages -->
 
-            <form name="registerForm" class="php-email-form" onsubmit="return addAgent();">
+            <form name="registerForm" class="php-email-form" onsubmit="return addAgent(event);">
               <div class="form-group mt-3">
                 <label for="name">Name:</label>
                 <input type="text" name="Name" class="form-control" id="name" placeholder="Enter your name" required autofocus>
@@ -95,7 +103,7 @@
                 </select>
               </div>
               <div class="text-center mt-4">
-                <button type="submit" class="btn btn-primary">Register</button>
+                <button type="submit" class="btn btn-primary" id="register-button">Register</button>
               </div>
             </form>
 
@@ -135,74 +143,163 @@
       connect().catch(function(error){ console.error(error); });
     });
 
-    async function addAgent() {
+    function setStatus(message) {
+      if (!message) {
+        $("#status-alert").hide();
+        $("#status-message").text("");
+        return;
+      }
+
+      $("#status-message").text(message);
+      $("#status-alert").show();
+    }
+
+    function showRegistrationError(message) {
+      $("#error-message").text(message || "Please check your wallet connection and try again.");
+      $("#error-alert").show();
+    }
+
+    function setSubmitting(isSubmitting) {
+      $("#register-button").prop("disabled", isSubmitting);
+      $("#register-button").text(isSubmitting ? "Registering..." : "Register");
+    }
+
+    function hideMessages() {
+      $("#warning-alert").hide();
+      $("#info-alert").hide();
+      $("#error-alert").hide();
+      setStatus("");
+    }
+
+    function uploadRegistrationData(ipfsClient, buffer) {
+      return new Promise(function(resolve, reject) {
+        ipfsClient.files.add(buffer, function(error, result) {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          if (!result || !result[0] || !result[0].hash) {
+            reject(new Error("IPFS upload returned no hash"));
+            return;
+          }
+
+          resolve(result[0].hash);
+        });
+      });
+    }
+
+    function getPatientListAsync() {
+      return new Promise(function(resolve, reject) {
+        contractInstance.get_patient_list({ gas: 1000000 }, function(error, result) {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve(result || []);
+        });
+      });
+    }
+
+    function getDoctorListAsync() {
+      return new Promise(function(resolve, reject) {
+        contractInstance.get_doctor_list({ gas: 1000000 }, function(error, result) {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve(result || []);
+        });
+      });
+    }
+
+    function addAgentOnChain(name, age, designation, ipfsHash) {
+      return new Promise(function(resolve, reject) {
+        contractInstance.add_agent(name, age, designation, ipfsHash, { gas: 1000000 }, function(error, result) {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve(result);
+        });
+      });
+    }
+
+    async function addAgent(event) {
+      if (event && event.preventDefault) {
+        event.preventDefault();
+      }
+
+      hideMessages();
+      setSubmitting(true);
+
       try {
         await connect();
       } catch (error) {
         console.error(error);
         $("#warning-alert").show();
+        setSubmitting(false);
         return false;
       }
 
-      const ipfs = window.IpfsApi('localhost', '5001');
-      const Buffer = window.IpfsApi().Buffer;
-
       const name = $("#name").val();
       const age = $("#age").val();
-      const email = $("#email").val();
       let designation = $("#designation").val();
       designation = parseInt(designation);
 
       let publicKey = (window.ethereum && window.ethereum.selectedAddress) || (web3.eth.accounts && web3.eth.accounts[0]);
-      publicKey = publicKey.toLowerCase();
+      if (!publicKey) {
+        $("#warning-alert").show();
+        setSubmitting(false);
+        return false;
+      }
+      publicKey = normalizeAddress(publicKey);
       console.log("Public Key:", publicKey);
 
-      let validAgent = true;
+      try {
+        const patientList = await getPatientListAsync();
+        const doctorList = await getDoctorListAsync();
 
-      contractInstance.get_patient_list({ gas: 1000000 }, function(error, PatientList) {
-        if (error) {
-          console.error(error);
-          return;
+        if (addressListIncludes(patientList, publicKey) || addressListIncludes(doctorList, publicKey)) {
+          $("#info-alert").show();
+          setSubmitting(false);
+          return false;
         }
-        contractInstance.get_doctor_list({ gas: 1000000 }, function(error, DoctorList) {
-          if (error) {
-            console.error(error);
-            return;
-          }
-          if (PatientList.includes(publicKey) || DoctorList.includes(publicKey)) {
-            validAgent = false;
-            $("#info-alert").show();
-            return;
-          }
 
-          $("#warning-alert").hide();
-          $("#info-alert").hide();
+        const userData = `Name: ${name}\nAge: ${age}\nPublic Key: ${publicKey}`;
+        let ipfsHash = "";
 
-          const userData = `Name: ${name}\nAge: ${age}\nEmail: ${email}\nPublic Key: ${publicKey}`;
-          const buffer = Buffer.from(userData);
-
-          ipfs.files.add(buffer, (error, result) => {
-            if (error) {
-              console.error(error);
-              return;
-            }
-            const ipfsHash = result[0].hash;
+        if (window.IpfsApi) {
+          try {
+            setStatus("Saving your profile details to IPFS...");
+            const ipfs = window.IpfsApi('localhost', '5001');
+            const Buffer = window.IpfsApi().Buffer;
+            const buffer = Buffer.from(userData);
+            ipfsHash = await uploadRegistrationData(ipfs, buffer);
             console.log("IPFS Hash:", ipfsHash);
+          } catch (error) {
+            console.warn("IPFS upload failed. Proceeding with on-chain registration only.", error);
+            setStatus("IPFS is unavailable, so the app will finish registration without an IPFS profile record.");
+          }
+        } else {
+          setStatus("IPFS library is unavailable, so the app will finish registration without an IPFS profile record.");
+        }
 
-            contractInstance.add_agent(name, age, designation, ipfsHash, { gas: 1000000 }, (err, res) => {
-              if (err) {
-                console.error(err);
-                return;
-              }
-              if (designation === 0) {
-                window.location.href = "./patient.html?key=" + publicKey;
-              } else if (designation === 1) {
-                window.location.href = "./doctor.html?key=" + publicKey;
-              }
-            });
-          });
-        });
-      });
+        setStatus("Submitting your registration transaction...");
+        const transactionHash = await addAgentOnChain(name, age, designation, ipfsHash);
+        setStatus("Waiting for blockchain confirmation...");
+        await waitForTransactionReceipt(transactionHash);
+
+        if (designation === 0) {
+          window.location.href = "./patient.html?key=" + publicKey;
+        } else if (designation === 1) {
+          window.location.href = "./doctor.html?key=" + publicKey;
+        }
+      } catch (error) {
+        console.error(error);
+        showRegistrationError(error.message || "The wallet rejected the transaction or the contract call failed.");
+        setSubmitting(false);
+      }
 
       return false; // Prevent form submission
     }
