@@ -64,6 +64,30 @@ function getCurrentAccount() {
   return null;
 }
 
+function normalizeAddress(address) {
+  if (!address) {
+    return "";
+  }
+
+  if (web3 && web3.toChecksumAddress) {
+    try {
+      return web3.toChecksumAddress(address);
+    } catch (error) {
+      console.warn("Unable to checksum address, falling back to lowercase comparison.", error);
+    }
+  }
+
+  return String(address).toLowerCase();
+}
+
+function addressListIncludes(addressList, targetAddress) {
+  var normalizedTarget = normalizeAddress(targetAddress);
+
+  return (addressList || []).some(function(address) {
+    return normalizeAddress(address) === normalizedTarget;
+  });
+}
+
 async function connect(){
   if (!window.ethereum) {
     throw new Error("No ethereum provider detected");
