@@ -54,7 +54,10 @@ def _fallback_simplified(diagnosis, comments):
 
 
 def _allow_fallback():
-    return os.getenv('ALLOW_AI_FALLBACK', '0').strip().lower() in ('1', 'true', 'yes')
+    configured = os.getenv('ALLOW_AI_FALLBACK')
+    if configured is None:
+        return True
+    return configured.strip().lower() in ('1', 'true', 'yes')
 
 
 def _provider_name():

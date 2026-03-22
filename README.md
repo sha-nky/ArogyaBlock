@@ -158,7 +158,7 @@ By default, frontend resolves AI gateway in this order:
 1. `aiApiBase` query string
 2. `localStorage.aiApiBase`
 3. `window.AI_API_BASE`
-4. fallback `http://127.0.0.1:5000`
+4. fallback `http://<current-page-host>:5000` (or `http://127.0.0.1:5000` when no hostname is available)
 
 Examples:
 
@@ -297,8 +297,8 @@ For multi-environment usage, centralize these values via build/runtime config.
 - pass `?aiApiBase=http://<host>:<port>` in URL
 - verify provider-specific keys in `app/.env` (`GROQ_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`)
 - verify `AI_PROVIDER` is set correctly (`groq`, `gemini`, `openai`, `openai_compatible`, or `anthropic`)
-- with `ALLOW_AI_FALLBACK=0`, gateway returns HTTP 502 when AI call fails (so you can detect misconfiguration)
-- set `ALLOW_AI_FALLBACK=1` only if you explicitly want demo fallback text
+- if `ALLOW_AI_FALLBACK` is unset (the default demo behavior) or set to `1`, the gateway returns fallback text when provider/key setup fails
+- set `ALLOW_AI_FALLBACK=0` only if you want the API to fail loudly with HTTP 502 for provider misconfiguration
 
 ### Truffle command download issues
 

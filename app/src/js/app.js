@@ -113,10 +113,16 @@ function getAiGatewayBase() {
   var configured = url.searchParams.get("aiApiBase") || window.localStorage.getItem("aiApiBase") || window.AI_API_BASE || "";
 
   if (!configured) {
-    configured = "http://127.0.0.1:5000";
+    var protocol = window.location.protocol === "https:" ? "https:" : "http:";
+    var hostname = window.location.hostname;
+
+    if (hostname) {
+      configured = protocol + "//" + hostname + ":5000";
+    } else {
+      configured = "http://127.0.0.1:5000";
+    }
   }
 
-  // Default to same-origin path to avoid browser CORS issues when proxied by dev server.
   return configured.endsWith("/") ? configured.slice(0, -1) : configured;
 }
 
