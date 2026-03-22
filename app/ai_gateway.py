@@ -5,7 +5,6 @@ from urllib import request
 from urllib.error import HTTPError, URLError
 
 from flask import Flask, jsonify, make_response, request as flask_request
-from openai import OpenAI
 
 
 app = Flask(__name__)
@@ -57,19 +56,49 @@ def _allow_fallback():
     return os.getenv('ALLOW_AI_FALLBACK', '0').strip().lower() in ('1', 'true', 'yes')
 
 
+def _looks_like_missing_configuration(value):
+    normalized = (value or '').strip()
+    if not normalized:
+        return True
+
+    placeholders = (
+        'YOUR_API_KEY',
+        'your_api_key',
+        'your_gemini_api_key_here',
+        'your_openai_api_key_here',
+        'your_anthropic_api_key_here',
+    )
+    return normalized in placeholders
+
+
+def _is_configuration_error(error):
+    if not error:
+        return False
+
+    markers = (
+        'not configured',
+        'package is missing',
+        'missing configuration',
+        'unsupported ai_provider',
+    )
+    lowered = error.lower()
+    return any(marker in lowered for marker in markers)
+
+
 def _provider_name():
     return os.getenv('AI_PROVIDER', 'openai').strip().lower()
 
 
 def _call_openai_chat(system_prompt, user_prompt, max_tokens=220):
     api_key = os.getenv('OPENAI_API_KEY', '').strip()
-    if not api_key:
+    if _looks_like_missing_configuration(api_key):
         return None, 'OPENAI_API_KEY is not configured in app/.env', 'openai'
 
     model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini').strip()
     base_url = os.getenv('OPENAI_BASE_URL', '').strip() or None
 
     try:
+        from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url=base_url)
         response = client.chat.completions.create(
             model=model,
@@ -84,6 +113,8 @@ def _call_openai_chat(system_prompt, user_prompt, max_tokens=220):
         if not text:
             return None, 'OpenAI-compatible provider returned empty response', 'openai'
         return text, None, 'openai'
+    except ImportError as exc:
+        return None, f'openai package is missing: {exc}', 'openai'
     except Exception as exc:
         return None, f'OpenAI-compatible request failed: {exc}', 'openai'
 
@@ -92,13 +123,14 @@ def _call_openai_chat(system_prompt, user_prompt, max_tokens=220):
 
 def _call_groq_chat(system_prompt, user_prompt, max_tokens=220):
     api_key = os.getenv('GROQ_API_KEY', '').strip()
-    if not api_key:
+    if _looks_like_missing_configuration(api_key):
         return None, 'GROQ_API_KEY is not configured in app/.env', 'groq'
 
     model = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile').strip()
     base_url = os.getenv('GROQ_BASE_URL', 'https://api.groq.com/openai/v1').strip()
 
     try:
+        from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url=base_url)
         response = client.chat.completions.create(
             model=model,
@@ -113,12 +145,14 @@ def _call_groq_chat(system_prompt, user_prompt, max_tokens=220):
         if not text:
             return None, 'Groq returned empty response', 'groq'
         return text, None, 'groq'
+    except ImportError as exc:
+        return None, f'openai package is missing: {exc}', 'groq'
     except Exception as exc:
         return None, f'Groq request failed: {exc}', 'groq'
 
 def _call_anthropic_chat(system_prompt, user_prompt, max_tokens=220):
     api_key = os.getenv('ANTHROPIC_API_KEY', '').strip()
-    if not api_key:
+    if _looks_like_missing_configuration(api_key):
         return None, 'ANTHROPIC_API_KEY is not configured in app/.env', 'anthropic'
 
     model = os.getenv('ANTHROPIC_MODEL', 'claude-3-5-sonnet-20240620').strip()
@@ -157,7 +191,7 @@ def _call_anthropic_chat(system_prompt, user_prompt, max_tokens=220):
 
 def _call_gemini_chat(system_prompt, user_prompt, max_tokens=220):
     api_key = os.getenv('GEMINI_API_KEY', '').strip()
-    if not api_key:
+    if _looks_like_missing_configuration(api_key):
         return None, 'GEMINI_API_KEY is not configured in app/.env', 'gemini'
 
     model = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash').strip()
@@ -208,7 +242,7 @@ def _response_with_fallback(live_text, error, provider, fallback_text_key, fallb
     if live_text:
         return _json_response({fallback_text_key: live_text, 'source': provider})
 
-    if _allow_fallback():
+    if _allow_fallback() or _is_configuration_error(error):
         return _json_response({fallback_text_key: fallback_text, 'source': 'fallback', 'warning': error, 'provider': provider})
 
     return _json_response({'error': error, 'source': 'none', 'provider': provider}, 502)

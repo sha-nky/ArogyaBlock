@@ -169,7 +169,7 @@
         $(".alert-danger").hide();
         
         key = (window.ethereum && window.ethereum.selectedAddress) || (web3.eth.accounts && web3.eth.accounts[0]);
-        key = key.toLocaleLowerCase();
+        key = normalizeAddress(key);
 
         var a = 0;
         var b = 0;
@@ -433,26 +433,12 @@ Comments : ${comments}
     }
 
     async function getSimplifiedDiagnosisForPatient(payload) {
-        try {
-            const response = await fetch(getSimplifiedDiagnosisApiUrl(), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errorBody = await response.text();
-                throw new Error('AI simplification failed with status ' + response.status + ': ' + errorBody);
-            }
-
-            const data = await response.json();
-            return data.simplified_diagnosis || '';
-        } catch (error) {
-            console.error('Error simplifying diagnosis:', error);
-            return '';
-        }
+        return fetchAiTextWithFallback(
+            getSimplifiedDiagnosisApiUrl(),
+            payload,
+            'simplified_diagnosis',
+            buildFallbackSimplifiedDiagnosis(payload.diagnosis, payload.comments)
+        );
     }
 
     async function submitDiagnosis2(element,index)
@@ -522,7 +508,7 @@ Simplified Summary For Patient: ${simplifiedDiagnosis || "Unavailable"}
         }
     } catch (error) {
         console.error('Error communicating with the AI gateway:', error);
-        alert('Could not reach AI gateway. Start backend on 127.0.0.1:5000 or set ?aiApiBase=http://host:port');
+        $(".alert-danger").show();
     }
     }
 </script>

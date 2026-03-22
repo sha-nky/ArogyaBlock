@@ -64,6 +64,61 @@ function getCurrentAccount() {
   return null;
 }
 
+function normalizeAddress(address) {
+  if (!address) {
+    return "";
+  }
+
+  if (web3 && web3.toChecksumAddress) {
+    try {
+      return web3.toChecksumAddress(address);
+    } catch (error) {
+      console.warn("Unable to checksum address, falling back to lowercase comparison.", error);
+    }
+  }
+
+  return String(address).toLowerCase();
+}
+
+function addressListIncludes(addressList, targetAddress) {
+  var normalizedTarget = normalizeAddress(targetAddress);
+
+  return (addressList || []).some(function(address) {
+    return normalizeAddress(address) === normalizedTarget;
+  });
+}
+
+function waitForTransactionReceipt(txHash, pollIntervalMs, timeoutMs) {
+  var interval = pollIntervalMs || 1000;
+  var timeout = timeoutMs || 120000;
+  var startedAt = Date.now();
+
+  return new Promise(function(resolve, reject) {
+    function poll() {
+      web3.eth.getTransactionReceipt(txHash, function(error, receipt) {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        if (receipt) {
+          resolve(receipt);
+          return;
+        }
+
+        if (Date.now() - startedAt >= timeout) {
+          reject(new Error("Timed out while waiting for the registration transaction to be mined."));
+          return;
+        }
+
+        setTimeout(poll, interval);
+      });
+    }
+
+    poll();
+  });
+}
+
 async function connect(){
   if (!window.ethereum) {
     throw new Error("No ethereum provider detected");
@@ -126,4 +181,44 @@ function getPreliminaryDiagnosisApiUrl() {
 
 function getSimplifiedDiagnosisApiUrl() {
   return getAiGatewayBase() + "/ai/simplify-diagnosis";
+}
+
+function stringifySymptoms(symptoms) {
+  if (Array.isArray(symptoms)) {
+    return symptoms.join(", ");
+  }
+
+  return symptoms || "";
+}
+
+function buildFallbackPreliminaryDiagnosis(symptoms, intensity) {
+  return "Possible condition pattern based on symptoms (" + stringifySymptoms(symptoms) + ") with " + intensity + " intensity. This is not a final diagnosis. A doctor should confirm it with examination and tests.";
+}
+
+function buildFallbackSimplifiedDiagnosis(diagnosis, comments) {
+  var commentText = comments ? comments + ". " : "";
+  return "Your doctor suspects: " + diagnosis + ". " + commentText + "In simple terms: this seems consistent with your symptoms, but your doctor still needs to confirm it.";
+}
+
+async function fetchAiTextWithFallback(url, payload, responseKey, fallbackText) {
+  try {
+    var response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      var errorBody = await response.text();
+      throw new Error("AI request failed with status " + response.status + ": " + errorBody);
+    }
+
+    var data = await response.json();
+    return data[responseKey] || fallbackText;
+  } catch (error) {
+    console.warn("AI gateway unavailable, using local fallback text.", error);
+    return fallbackText;
+  }
 }
