@@ -136,16 +136,16 @@
             return;
         }
 
-        var normalizedKey = publicKey.toLowerCase();
+        var normalizedKey = normalizeAddress(publicKey);
 
         try {
             var patientList = await getPatientListAsync();
-            if (patientList.indexOf(normalizedKey) !== -1) {
+            if (addressListIncludes(patientList, normalizedKey)) {
                 location.href = "./patient.html?key=" + publicKey;
                 return;
             }
             var doctorList = await getDoctorListAsync();
-            if (doctorList.indexOf(normalizedKey) !== -1) {
+            if (addressListIncludes(doctorList, normalizedKey)) {
                 location.href = "./doctor.html?key=" + publicKey;
                 return;
             }

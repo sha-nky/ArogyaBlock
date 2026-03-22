@@ -64,6 +64,61 @@ function getCurrentAccount() {
   return null;
 }
 
+function normalizeAddress(address) {
+  if (!address) {
+    return "";
+  }
+
+  if (web3 && web3.toChecksumAddress) {
+    try {
+      return web3.toChecksumAddress(address);
+    } catch (error) {
+      console.warn("Unable to checksum address, falling back to lowercase comparison.", error);
+    }
+  }
+
+  return String(address).toLowerCase();
+}
+
+function addressListIncludes(addressList, targetAddress) {
+  var normalizedTarget = normalizeAddress(targetAddress);
+
+  return (addressList || []).some(function(address) {
+    return normalizeAddress(address) === normalizedTarget;
+  });
+}
+
+function waitForTransactionReceipt(txHash, pollIntervalMs, timeoutMs) {
+  var interval = pollIntervalMs || 1000;
+  var timeout = timeoutMs || 120000;
+  var startedAt = Date.now();
+
+  return new Promise(function(resolve, reject) {
+    function poll() {
+      web3.eth.getTransactionReceipt(txHash, function(error, receipt) {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        if (receipt) {
+          resolve(receipt);
+          return;
+        }
+
+        if (Date.now() - startedAt >= timeout) {
+          reject(new Error("Timed out while waiting for the registration transaction to be mined."));
+          return;
+        }
+
+        setTimeout(poll, interval);
+      });
+    }
+
+    poll();
+  });
+}
+
 async function connect(){
   if (!window.ethereum) {
     throw new Error("No ethereum provider detected");
