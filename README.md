@@ -133,10 +133,16 @@ Ensure:
 
 ### 4) (Optional but recommended) Start AI gateway backend
 
+Run the built-in Python AI gateway server (no extra packages required):
+
+```bash
+python3 app/ai_gateway.py
+```
+
 The frontend uses either:
 
-- relative `/predict` (proxied by lite-server to `127.0.0.1:5000`), or
-- override using query string `?mlApiBase=http://host:port`
+- direct AI gateway base `http://127.0.0.1:5000` by default, or
+- override using query string `?aiApiBase=http://host:port`
 
 ### 5) Start frontend
 
