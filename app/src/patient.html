@@ -109,24 +109,24 @@
                                 </div>
                                 <div class="col-sm-10" style="margin-left: 30px; margin-top: -80px;">
                                     <div id="symptoms">
-                                        <select class="form-control" id="symp1" style="margin-bottom: -65px;" required>
+                                        <select class="form-control" id="symp1" style="margin-bottom: -65px;">
                                             <option selected disabled>-- Select Symptom 1 --</option>
                                             <!-- Options will be dynamically added here -->
                                         </select>
                                         <br>
-                                        <select class="form-control" id="symp2" style="margin-bottom: -65px;" required>
+                                        <select class="form-control" id="symp2" style="margin-bottom: -65px;">
                                             <option selected disabled>-- Select Symptom 2 --</option>
                                         </select>
                                         <br>
-                                        <select class="form-control" id="symp3" style="margin-bottom: -65px;" required>
+                                        <select class="form-control" id="symp3" style="margin-bottom: -65px;">
                                             <option selected disabled>-- Select Symptom 3 --</option>
                                         </select>
                                         <br>
-                                        <select class="form-control" id="symp4" style="margin-bottom: -65px;" required>
+                                        <select class="form-control" id="symp4" style="margin-bottom: -65px;">
                                             <option selected disabled>-- Select Symptom 4 --</option>
                                         </select>
                                         <br>
-                                        <select class="form-control" id="symp5" required>
+                                        <select class="form-control" id="symp5">
                                             <option selected disabled>-- Select Symptom 5 --</option>
                                         </select>
                                     </div>
@@ -140,7 +140,7 @@
                             <div class="row">
                                 <div class="col-sm-2"><label for="intensity" class="control-label"><b>Intensity:</b></label></div>
                                 <div class="col-sm-10">
-                                    <select class="form-control" id="intensity" style="width:inherit; margin-left: -85px;" required>
+                                    <select class="form-control" id="intensity" style="width:inherit; margin-left: -85px;">
                                         <option selected disabled>-- Please Select --</option>
                                         <option value="0">Low</option>
                                         <option value="1">Normal</option>
@@ -152,6 +152,9 @@
                     </div>
                     <br>
                     <div class="form-group" style="align-items:centre; margin-left:80px; margin-top: -160px;">
+                        <label class="control-label" for="patientReportUpload"><b>Medical Report (optional):</b></label>
+                        <input type="file" class="form-control" id="patientReportUpload" accept=".txt,.md,.csv,.json,.xml,.log">
+                        <p style="font-size: 12px; margin-top: 8px;">Upload text-based reports (TXT/CSV/JSON/etc.).</p>
                         <button class="cta-btn btn-block" onclick="submitSymptoms(this)">Submit</button>
                     </div>
                     <div class="alert alert-info" id="patientAiPreliminaryPanel" style="display:none; margin-top: 20px;">
@@ -510,7 +513,38 @@ populateDropdowns();
         }
     }
 
-    // New 
+    // New
+    function getSelectedSymptoms() {
+        var selected = [];
+        for (let i = 1; i <= 5; i++) {
+            const value = (document.getElementById("symp" + i).value || "").trim();
+            if (value && !value.startsWith("--")) {
+                selected.push(value);
+            }
+        }
+        return selected;
+    }
+
+    function readTextFromUpload(fileInputId) {
+        return new Promise(function(resolve, reject) {
+            const fileInput = document.getElementById(fileInputId);
+            const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+            if (!file) {
+                resolve('');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                resolve((event.target && event.target.result) ? String(event.target.result).trim() : '');
+            };
+            reader.onerror = function() {
+                reject(new Error('Failed to read uploaded file'));
+            };
+            reader.readAsText(file);
+        });
+    }
+
     async function submitSymptoms(element,index)
     {
         // var table = document.getElementById("viewPatient");
@@ -519,14 +553,23 @@ populateDropdowns();
         // console.log(patientAddress);
          var diagnosis = $("#intensity").val();
          diagnosis = parseInt(diagnosis);
-         var diagnosed = intensityDict[diagnosis];
+         var diagnosed = intensityDict[diagnosis] || "Not provided";
          console.log("Diagnosis ",diagnosis);
-        var symp1 = document.getElementById("symp1").value;
-        var symp2 = document.getElementById("symp2").value;
-        var symp3 = document.getElementById("symp3").value;
-        var symp4 = document.getElementById("symp4").value;
-        var symp5 = document.getElementById("symp5").value;
-        var symp = symp1+", "+symp2+", "+symp3+", "+symp4+", "+symp5
+        var selectedSymptoms = getSelectedSymptoms();
+        var symp = selectedSymptoms.join(", ");
+        var uploadedReportText = "";
+        try {
+            uploadedReportText = await readTextFromUpload("patientReportUpload");
+        } catch (readError) {
+            console.error(readError);
+            alert("Could not read uploaded report. Please upload a text-based file.");
+            return;
+        }
+
+        if (!symp && !uploadedReportText) {
+            alert("Please select at least one symptom or upload a medical report.");
+            return;
+        }
         console.log("SYMP", symp);
         
         console.log('symp ', symp);
@@ -537,8 +580,13 @@ populateDropdowns();
 
         console.log( "oldrecords ",resultt);
         var aiPreliminary = '';
-        if (!isNaN(diagnosis)) {
-            aiPreliminary = await getPatientPreliminaryDiagnosis(symp, diagnosed);
+        var aiInputText = symp;
+        if (uploadedReportText) {
+            aiInputText = (aiInputText ? aiInputText + "\n" : "") + "Uploaded report text:\n" + uploadedReportText;
+        }
+
+        if (aiInputText) {
+            aiPreliminary = await getPatientPreliminaryDiagnosis(aiInputText, diagnosed);
         }
 
         if (aiPreliminary) {
@@ -553,7 +601,8 @@ populateDropdowns();
 Symptoms updated By : ${pname}
 Symptomes updation Time : ${getDateTime()}
 Intensity: ${diagnosed}
-Symptomes : ${symp}
+Symptomes : ${symp || "Not provided"}
+Uploaded Medical Report Text : ${uploadedReportText || "Not provided"}
 AI Preliminary Diagnosis : ${aiPreliminary || "Unavailable"}
 -------------------------------------------------
 `
@@ -561,39 +610,33 @@ AI Preliminary Diagnosis : ${aiPreliminary || "Unavailable"}
         var updatedRecords = resultt+newRecords;
         console.log("updatedRecords", updatedRecords);
 
-        if (!isNaN(diagnosis)){
-            console.log("Innn");
-            var buffer = Buffer(updatedRecords);
+        console.log("Innn");
+        var buffer = Buffer(updatedRecords);
 
-            ipfs.files.add(buffer, (error, result) => {
-                if(error){
-                    console.log("Hereeee");
-                    console.log(error)
-                }else{
-                    console.log("goood");
-                    ipfshash = result[0].hash;
-                    contractInstance.set_hash_public(key, ipfshash, {gas: 1000000}, function(error, result){
-                        if(!error){
-                            alert("Your symptomes has been submitted.");
-                            // // delete content row
-                            // table.deleteRow(index+1);
+        ipfs.files.add(buffer, (error, result) => {
+            if(error){
+                console.log("Hereeee");
+                console.log(error)
+            }else{
+                console.log("goood");
+                ipfshash = result[0].hash;
+                contractInstance.set_hash_public(key, ipfshash, {gas: 1000000}, function(error, result){
+                    if(!error){
+                        alert("Your symptomes has been submitted.");
+                        // // delete content row
+                        // table.deleteRow(index+1);
 
-                            // // delete main row of corresponding content row
-                            // table.deleteRow(index); 
-                        }else{
-                            console.log("big error", error.message);
-                            $(".alert-danger").show();
-                            //console.log(error);
-                        }
-                    })
-                }
-            });
-
+                        // // delete main row of corresponding content row
+                        // table.deleteRow(index); 
+                    }else{
+                        console.log("big error", error.message);
+                        $(".alert-danger").show();
+                        //console.log(error);
+                    }
+                })
             }
-            else{
-                alert("Select a diagnosis");
-            }
-            }
+        });
+        }
 
         function getDateTime(){
             function AddZero(num) {

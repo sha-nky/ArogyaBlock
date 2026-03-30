@@ -258,7 +258,7 @@
                                                 <div class="row">
                                                     <div class="col-sm-2"><label for="ailmentsList" class="control-label">Diagnosis:</label></div>
                                                     <div class="col-sm-10">
-                                                        <select class="form-control" id="ailmentsList${patientAddress}" style="width:inherit;" required>
+                                                        <select class="form-control" id="ailmentsList${patientAddress}" style="width:inherit;">
                                                             <option selected disabled>-- Please Select --</option>
                                                             <option value="0">(vertigo) Paroymsal Positional Vertigo</option>
                                                             <option value="1">AIDS</option>
@@ -314,7 +314,7 @@
                                                         <label class="control-label" for="details">Details:</label>
                                                     </div>
                                                     <div class="col-sm-10">
-                                                        <textarea class="form-control" rows="5" id="details" placeholder="Enter details to be added" name = "Details" style="width: inherit" required autofocus></textarea>
+                                                        <textarea class="form-control" rows="5" id="details${patientAddress}" placeholder="Enter details to be added (optional)" name = "Details" style="width: inherit" autofocus></textarea>
                                                         <!-- <input type="text" class="form-control" id="details" placeholder="Enter details to be added" name = "Details" style="width: inherit" required autofocus> -->
                                                     </div>
                                                 </div>    
@@ -325,6 +325,11 @@
                                         <div class="alert alert-success" id="patientFriendlySummary`+patientAddress+`" style="display:none; margin-bottom: 15px;">
                                             <strong>AI summary for patient:</strong>
                                             <p id="patientFriendlySummaryText`+patientAddress+`" style="margin-top:10px; white-space: pre-line;"></p>
+                                        </div>
+                                        <div class="form-group col-sm-12" style="margin-bottom: 15px;">
+                                            <label for="prescriptionUpload`+patientAddress+`" class="control-label">Prescription File (optional):</label>
+                                            <input type="file" class="form-control" id="prescriptionUpload`+patientAddress+`" accept=".txt,.md,.csv,.json,.xml,.log">
+                                            <p style="font-size: 12px; margin-top: 8px;">Upload text-based prescription/report files.</p>
                                         </div>
                                         <div class="form-group" style="align-item:centre; margin-left:80px">
                                                 <button class="cta-btn btn-block" onclick = "submitDiagnosis2(this,`+index+`)">Submit</button>
@@ -387,7 +392,7 @@
         var diagnosis = $("#ailmentsList"+patientAddress).val();
         diagnosis = parseInt(diagnosis);
         var diagnosed = ailmentsDict[diagnosis];
-        var comments = document.querySelector("#details").value;
+        var comments = document.querySelector("#details" + patientAddress).value;
 
         var oldRecords = $("#records"+patientAddress).html();
 
@@ -464,14 +469,32 @@ Comments : ${comments}
         var diagnosis = $("#ailmentsList"+patientAddress).val();
         diagnosis = parseInt(diagnosis);
         var diagnosed = ailmentsDict[diagnosis];
-        var comments = document.querySelector("#details").value;
+        var comments = document.querySelector("#details" + patientAddress).value.trim();
+        var prescriptionFileInput = document.getElementById("prescriptionUpload" + patientAddress);
+        var prescriptionText = "";
+        if (prescriptionFileInput && prescriptionFileInput.files && prescriptionFileInput.files[0]) {
+            try {
+                prescriptionText = await prescriptionFileInput.files[0].text();
+                prescriptionText = (prescriptionText || "").trim();
+            } catch (fileError) {
+                console.error(fileError);
+                alert("Could not read prescription file. Please upload a text-based file.");
+                return;
+            }
+        }
+
+        if (isNaN(diagnosis) && !comments && !prescriptionText) {
+            alert("Please choose a diagnosis, enter details, or upload a prescription.");
+            return;
+        }
 
         
         try{
             var oldRecords = $("#records"+patientAddress).html();
+            const aiContext = [comments, prescriptionText].filter(Boolean).join("\n");
             const simplifiedDiagnosis = await getSimplifiedDiagnosisForPatient({
-                diagnosis: diagnosed,
-                comments: comments,
+                diagnosis: diagnosed || "Pending diagnosis",
+                comments: aiContext || "No additional comments provided.",
                 symptoms: global_sym
             });
 
@@ -483,23 +506,23 @@ Comments : ${comments}
             var newRecords = 
 `Diagnosed By : ${docName}
 Diagnosis Time : ${getDateTime()}
-Diagnosis : ${diagnosed}
-Comments : ${comments}
+Diagnosis : ${diagnosed || "Not provided"}
+Comments : ${comments || "Not provided"}
+Uploaded Prescription Text : ${prescriptionText || "Not provided"}
 Simplified Summary For Patient: ${simplifiedDiagnosis || "Unavailable"}
 -------------------------------------------------
 `
 
         var updatedRecords = oldRecords+newRecords;
         
-        if (!isNaN(diagnosis)){
+        var buffer = Buffer(updatedRecords);
 
-            var buffer = Buffer(updatedRecords);
-
-            ipfs.files.add(buffer, (error, result) => {
-                if(error){
-                    console.log(error)
-                }else{
-                    ipfshash = result[0].hash;
+        ipfs.files.add(buffer, (error, result) => {
+            if(error){
+                console.log(error)
+            }else{
+                ipfshash = result[0].hash;
+                if (!isNaN(diagnosis)) {
                     contractInstance.insurance_claimm(patientAddress, diagnosis, ipfshash, {gas: 1000000}, function(error, result){
                         if(!error){
                             alert("Your diagnosis has been submitted.");
@@ -513,13 +536,20 @@ Simplified Summary For Patient: ${simplifiedDiagnosis || "Unavailable"}
                             console.log(error);
                         }
                     })
+                } else {
+                    contractInstance.set_hash_public(patientAddress, ipfshash, {gas: 1000000}, function(error){
+                        if(!error){
+                            alert("Prescription/notes uploaded without diagnosis.");
+                            table.deleteRow(index+1);
+                            table.deleteRow(index);
+                        }else{
+                            $(".alert-danger").show();
+                            console.log(error);
+                        }
+                    })
                 }
-            });
-            
-        }
-        else{
-            alert("Select a diagnosis");
-        }
+            }
+        });
     } catch (error) {
         console.error('Error communicating with the AI gateway:', error);
         alert('Could not reach AI gateway. Start backend on 127.0.0.1:5000 or set ?aiApiBase=http://host:port');
