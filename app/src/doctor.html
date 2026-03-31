@@ -328,8 +328,8 @@
                                         </div>
                                         <div class="form-group col-sm-12" style="margin-bottom: 15px;">
                                             <label for="prescriptionUpload`+patientAddress+`" class="control-label">Prescription File (optional):</label>
-                                            <input type="file" class="form-control" id="prescriptionUpload`+patientAddress+`" accept=".txt,.md,.csv,.json,.xml,.log">
-                                            <p style="font-size: 12px; margin-top: 8px;">Upload text-based prescription/report files.</p>
+                                            <input type="file" class="form-control" id="prescriptionUpload`+patientAddress+`" accept=".pdf,.txt,.md,.csv,.json,.xml,.log,.docx">
+                                            <p style="font-size: 12px; margin-top: 8px;">Upload prescription/report (PDF/TXT/CSV/JSON/DOCX etc.).</p>
                                         </div>
                                         <div class="form-group" style="align-item:centre; margin-left:80px">
                                                 <button class="cta-btn btn-block" onclick = "submitDiagnosis2(this,`+index+`)">Submit</button>
@@ -460,6 +460,58 @@ Comments : ${comments}
         }
     }
 
+    function getExtractTextApiUrl() {
+        return getAiGatewayBase() + "/ai/extract-text";
+    }
+
+    async function extractTextFromUpload(file) {
+        if (!file) {
+            return "";
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch(getExtractTextApiUrl(), {
+            method: "POST",
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error("Could not extract text from uploaded file: " + errorBody);
+        }
+
+        const payload = await response.json();
+        return payload.extracted_text || "";
+    }
+
+    function uploadFileToIpfs(file) {
+        return new Promise(function(resolve, reject) {
+            if (!file) {
+                resolve("");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const arrayBuffer = event.target.result;
+                const buffer = Buffer.from(new Uint8Array(arrayBuffer));
+                ipfs.files.add(buffer, function(error, result) {
+                    if (error) {
+                        reject(error);
+                        return;
+                    }
+                    resolve(result[0].hash);
+                });
+            };
+            reader.onerror = function() {
+                reject(new Error("Failed to read uploaded file for IPFS"));
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
     async function submitDiagnosis2(element,index)
     {
         var table = document.getElementById("viewPatient");
@@ -471,14 +523,16 @@ Comments : ${comments}
         var diagnosed = ailmentsDict[diagnosis];
         var comments = document.querySelector("#details" + patientAddress).value.trim();
         var prescriptionFileInput = document.getElementById("prescriptionUpload" + patientAddress);
+        var uploadedFile = prescriptionFileInput && prescriptionFileInput.files ? prescriptionFileInput.files[0] : null;
         var prescriptionText = "";
+        var prescriptionFileHash = "";
         if (prescriptionFileInput && prescriptionFileInput.files && prescriptionFileInput.files[0]) {
             try {
-                prescriptionText = await prescriptionFileInput.files[0].text();
-                prescriptionText = (prescriptionText || "").trim();
+                prescriptionText = await extractTextFromUpload(uploadedFile);
+                prescriptionFileHash = await uploadFileToIpfs(uploadedFile);
             } catch (fileError) {
                 console.error(fileError);
-                alert("Could not read prescription file. Please upload a text-based file.");
+                alert("Could not process prescription file.");
                 return;
             }
         }
@@ -508,8 +562,11 @@ Comments : ${comments}
 Diagnosis Time : ${getDateTime()}
 Diagnosis : ${diagnosed || "Not provided"}
 Comments : ${comments || "Not provided"}
-Uploaded Prescription Text : ${prescriptionText || "Not provided"}
-Simplified Summary For Patient: ${simplifiedDiagnosis || "Unavailable"}
+Uploaded Prescription Analyzed By AI : ${prescriptionText ? "Yes" : "No"}
+Uploaded Prescription File Name : ${uploadedFile ? uploadedFile.name : "Not provided"}
+Uploaded Prescription Attachment : ${prescriptionFileHash ? `<a href="http://localhost:8080/ipfs/${prescriptionFileHash}" target="_blank">View Uploaded Document</a>` : "Not provided"}
+Simplified Summary For Patient: 
+${simplifiedDiagnosis || "Unavailable"}
 -------------------------------------------------
 `
 

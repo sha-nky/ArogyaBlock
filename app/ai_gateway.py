@@ -1,8 +1,11 @@
 import json
 import os
+import re
+from io import BytesIO
 from pathlib import Path
 from urllib import request
 from urllib.error import HTTPError, URLError
+from zipfile import ZipFile
 
 from flask import Flask, jsonify, make_response, request as flask_request
 from openai import OpenAI
@@ -36,6 +39,48 @@ def _json_response(payload, status=200):
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
     response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
     return response
+
+
+
+def _extract_text_from_upload(file_storage):
+    filename = (file_storage.filename or '').strip()
+    suffix = Path(filename).suffix.lower()
+    content_type = (file_storage.content_type or '').lower()
+    raw_bytes = file_storage.read()
+
+    if not raw_bytes:
+        return ''
+
+    if suffix == '.pdf' or content_type == 'application/pdf':
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(BytesIO(raw_bytes))
+            text_parts = []
+            for page in reader.pages:
+                page_text = (page.extract_text() or '').strip()
+                if page_text:
+                    text_parts.append(page_text)
+            return '\n'.join(text_parts).strip()
+        except Exception as exc:
+            raise ValueError(f'Unable to parse PDF: {exc}')
+
+    if suffix == '.docx':
+        try:
+            with ZipFile(BytesIO(raw_bytes)) as archive:
+                document_xml = archive.read('word/document.xml').decode('utf-8', errors='ignore')
+            text = re.sub(r'<[^>]+>', ' ', document_xml)
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text
+        except Exception as exc:
+            raise ValueError(f'Unable to parse DOCX: {exc}')
+
+    for encoding in ('utf-8', 'utf-16', 'latin-1'):
+        try:
+            return raw_bytes.decode(encoding).strip()
+        except UnicodeDecodeError:
+            continue
+
+    return raw_bytes.decode('utf-8', errors='ignore').strip()
 
 
 def _fallback_preliminary(symptoms, intensity):
@@ -227,7 +272,7 @@ def preliminary_diagnosis():
         'You are a clinical triage assistant. Provide a concise preliminary diagnosis for doctors. '
         'Always mention that this is not final and requires doctor confirmation.'
     )
-    user_prompt = f'Symptoms: {symptoms}\nIntensity: {intensity}\nReturn 2-3 sentences.'
+    user_prompt = f'Symptoms: {symptoms}\nIntensity: {intensity}\nReturn 5-10 bullet-like lines in plain text that gives a comprehensive and complete summary for the doctor.'
 
     ai_text, error, provider = _call_llm(system_prompt, user_prompt)
     return _response_with_fallback(
@@ -255,7 +300,8 @@ def simplify_diagnosis():
     )
     user_prompt = (
         f'Doctor diagnosis: {diagnosis}\nDoctor comments: {comments}\n'
-        f'Reported symptoms: {symptoms}\nReturn 3 short bullet-like lines in plain text.'
+        f'Reported symptoms: {symptoms}\nReturn 5-10 short bullet-like lines in plain text in such a manner that it covers the whole report without leaving anything.'
+        f'These points should be helpful to the patients to understand what the issue is, what is suggested by the doctor in terms of medicines, precautions, etc. (if any), and what is/are the next step(s)'
     )
 
     ai_text, error, provider = _call_llm(system_prompt, user_prompt)
@@ -266,6 +312,27 @@ def simplify_diagnosis():
         fallback_text_key='simplified_diagnosis',
         fallback_text=_fallback_simplified(diagnosis, comments),
     )
+
+@app.route('/ai/extract-text', methods=['POST', 'OPTIONS'])
+def extract_text():
+    if flask_request.method == 'OPTIONS':
+        return _json_response({}, 204)
+
+    uploaded = flask_request.files.get('file')
+    if not uploaded:
+        return _json_response({'error': 'No file was uploaded'}, 400)
+
+    try:
+        extracted_text = _extract_text_from_upload(uploaded)
+    except ValueError as exc:
+        return _json_response({'error': str(exc)}, 400)
+    except Exception as exc:
+        return _json_response({'error': f'Could not extract file text: {exc}'}, 500)
+
+    return _json_response({
+        'file_name': uploaded.filename or '',
+        'extracted_text': extracted_text,
+    })
 
 
 if __name__ == '__main__':
