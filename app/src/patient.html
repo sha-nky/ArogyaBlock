@@ -153,8 +153,8 @@
                     <br>
                     <div class="form-group" style="align-items:start; margin-top: -160px;">
                         <div><label class="control-label" for="patientReportUpload"><b>Medical Report (optional):</b></label></div>
-                        <input type="file" class="form-control" id="patientReportUpload" accept=".pdf,.txt,.md,.csv,.json,.xml,.log,.docx">
-                        <p style="font-size: 12px; margin-top: 0px;">Upload report (PDF/TXT/CSV/JSON/DOCX etc.). Text is extracted by AI gateway.</p>
+                        <input type="file" class="form-control" id="patientReportUpload" accept=".pdf,.txt,.md,.csv,.json,.xml,.log,.docx,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,image/*">
+                        <p style="font-size: 12px; margin-top: 8px;">Upload report (PDF, image, TXT, CSV, JSON, DOCX). Text is extracted by AI gateway.</p>
                         <button class="cta-btn btn-block" onclick="submitSymptoms(this)">Submit</button>
                     </div>
                     <div class="alert alert-info" id="patientAiPreliminaryPanel" style="display:none; margin-top: 20px;">
@@ -531,7 +531,7 @@ populateDropdowns();
 
     async function extractTextFromUpload(file) {
         if (!file) {
-            return "";
+            return { extractedText: "", scanAnalysis: "" };
         }
 
         const formData = new FormData();
@@ -548,7 +548,10 @@ populateDropdowns();
         }
 
         const payload = await response.json();
-        return payload.extracted_text || "";
+        return {
+            extractedText: payload.extracted_text || "",
+            scanAnalysis: payload.scan_analysis || ""
+        };
     }
 
     function uploadFileToIpfs(file) {
@@ -592,9 +595,12 @@ populateDropdowns();
         const patientReportInput = document.getElementById("patientReportUpload");
         const uploadedFile = patientReportInput && patientReportInput.files ? patientReportInput.files[0] : null;
         var uploadedReportText = "";
+        var uploadedScanAnalysis = "";
         var uploadedFileHash = "";
         try {
-            uploadedReportText = await extractTextFromUpload(uploadedFile);
+            const extractionPayload = await extractTextFromUpload(uploadedFile);
+            uploadedReportText = extractionPayload.extractedText || "";
+            uploadedScanAnalysis = extractionPayload.scanAnalysis || "";
             uploadedFileHash = await uploadFileToIpfs(uploadedFile);
         } catch (readError) {
             console.error(readError);
@@ -602,7 +608,7 @@ populateDropdowns();
             return;
         }
 
-        if (!symp && !uploadedReportText) {
+        if (!symp && !uploadedReportText && !uploadedScanAnalysis) {
             alert("Please select at least one symptom or upload a medical report.");
             return;
         }
@@ -619,6 +625,9 @@ populateDropdowns();
         var aiInputText = symp;
         if (uploadedReportText) {
             aiInputText = (aiInputText ? aiInputText + "\n" : "") + "Uploaded report text:\n" + uploadedReportText;
+        }
+        if (uploadedScanAnalysis) {
+            aiInputText = (aiInputText ? aiInputText + "\n" : "") + "Uploaded scan analysis:\n" + uploadedScanAnalysis;
         }
 
         if (aiInputText) {
@@ -639,6 +648,7 @@ Symptomes updation Time : ${getDateTime()}
 Intensity: ${diagnosed}
 Symptomes : ${symp || "Not provided"}
 Uploaded Medical Report Analyzed By AI : ${uploadedReportText ? "Yes" : "No"}
+Uploaded Scan/Medical Image Analysis : ${uploadedScanAnalysis || "Not provided"}
 Uploaded Medical Report File Name : ${uploadedFile ? uploadedFile.name : "Not provided"}
 Uploaded Medical Report Attachment : ${uploadedFileHash ? `<a href="http://localhost:8080/ipfs/${uploadedFileHash}" target="_blank">View Uploaded Document</a>` : "Not provided"}
 AI Preliminary Diagnosis :

@@ -328,8 +328,8 @@
                                         </div>
                                         <div class="form-group col-sm-12" style="margin-bottom: 15px;">
                                             <label for="prescriptionUpload`+patientAddress+`" class="control-label">Prescription File (optional):</label>
-                                            <input type="file" class="form-control" id="prescriptionUpload`+patientAddress+`" accept=".pdf,.txt,.md,.csv,.json,.xml,.log,.docx">
-                                            <p style="font-size: 12px; margin-top: 8px;">Upload prescription/report (PDF/TXT/CSV/JSON/DOCX etc.).</p>
+                                            <input type="file" class="form-control" id="prescriptionUpload`+patientAddress+`" accept=".pdf,.txt,.md,.csv,.json,.xml,.log,.docx,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,image/*">
+                                            <p style="font-size: 12px; margin-top: 8px;">Upload prescription/report (PDF, image, TXT, CSV, JSON, DOCX).</p>
                                         </div>
                                         <div class="form-group" style="align-item:centre; margin-left:80px">
                                                 <button class="cta-btn btn-block" onclick = "submitDiagnosis2(this,`+index+`)">Submit</button>
@@ -466,7 +466,7 @@ Comments : ${comments}
 
     async function extractTextFromUpload(file) {
         if (!file) {
-            return "";
+            return { extractedText: "", scanAnalysis: "" };
         }
 
         const formData = new FormData();
@@ -483,7 +483,10 @@ Comments : ${comments}
         }
 
         const payload = await response.json();
-        return payload.extracted_text || "";
+        return {
+            extractedText: payload.extracted_text || "",
+            scanAnalysis: payload.scan_analysis || ""
+        };
     }
 
     function uploadFileToIpfs(file) {
@@ -525,10 +528,13 @@ Comments : ${comments}
         var prescriptionFileInput = document.getElementById("prescriptionUpload" + patientAddress);
         var uploadedFile = prescriptionFileInput && prescriptionFileInput.files ? prescriptionFileInput.files[0] : null;
         var prescriptionText = "";
+        var scanAnalysis = "";
         var prescriptionFileHash = "";
         if (prescriptionFileInput && prescriptionFileInput.files && prescriptionFileInput.files[0]) {
             try {
-                prescriptionText = await extractTextFromUpload(uploadedFile);
+                const extractionPayload = await extractTextFromUpload(uploadedFile);
+                prescriptionText = extractionPayload.extractedText || "";
+                scanAnalysis = extractionPayload.scanAnalysis || "";
                 prescriptionFileHash = await uploadFileToIpfs(uploadedFile);
             } catch (fileError) {
                 console.error(fileError);
@@ -537,7 +543,7 @@ Comments : ${comments}
             }
         }
 
-        if (isNaN(diagnosis) && !comments && !prescriptionText) {
+        if (isNaN(diagnosis) && !comments && !prescriptionText && !scanAnalysis) {
             alert("Please choose a diagnosis, enter details, or upload a prescription.");
             return;
         }
@@ -545,7 +551,7 @@ Comments : ${comments}
         
         try{
             var oldRecords = $("#records"+patientAddress).html();
-            const aiContext = [comments, prescriptionText].filter(Boolean).join("\n");
+            const aiContext = [comments, prescriptionText, scanAnalysis].filter(Boolean).join("\n");
             const simplifiedDiagnosis = await getSimplifiedDiagnosisForPatient({
                 diagnosis: diagnosed || "Pending diagnosis",
                 comments: aiContext || "No additional comments provided.",
@@ -563,6 +569,7 @@ Diagnosis Time : ${getDateTime()}
 Diagnosis : ${diagnosed || "Not provided"}
 Comments : ${comments || "Not provided"}
 Uploaded Prescription Analyzed By AI : ${prescriptionText ? "Yes" : "No"}
+Uploaded Scan/Medical Image Analysis : ${scanAnalysis || "Not provided"}
 Uploaded Prescription File Name : ${uploadedFile ? uploadedFile.name : "Not provided"}
 Uploaded Prescription Attachment : ${prescriptionFileHash ? `<a href="http://localhost:8080/ipfs/${prescriptionFileHash}" target="_blank">View Uploaded Document</a>` : "Not provided"}
 Simplified Summary For Patient: 
